@@ -1,0 +1,22 @@
+[
+    {
+        "nombre": "Taco sencillo",
+        "precio": 35.0
+    },
+    {
+        "nombre": "Taco con queso",
+        "precio": 48.0
+    },
+    {
+        "nombre": "Taco harina",
+        "precio": 40.0
+    },
+    {
+        "nombre": "Sincronizada",
+        "precio": 60.0
+    },
+    {
+        "nombre": "Volc\u00e1n",
+        "precio": 50.0
+    }
+]
