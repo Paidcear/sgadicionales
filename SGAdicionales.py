@@ -149,22 +149,22 @@ elif opcion == "Ventas":
                     st.success(f"Total a cobrar: ${total_venta}")
 
                 # Inyectar JS para enfocar automáticamente el campo
-                components.html(
-                    """
-                    <script>
-                    setTimeout(function() {
-                        const inputs = window.parent.document.querySelectorAll('input');
-                        for (let input of inputs) {
-                            if (input.placeholder === "Bebidas" || input.ariaLabel === "Bebidas") {
-                                input.focus();
-                                break;
-                            }
-                        }
-                    }, 100);
-                    </script>
-                    """,
-                    height=0
-                )
+                #components.html(
+                   # """
+                   # <script>
+                   # setTimeout(function() {
+                      #  const inputs = window.parent.document.querySelectorAll('input');
+                      #  for (let input of inputs) {
+                        #    if (input.placeholder === "Bebidas" || input.ariaLabel === "Bebidas") {
+                          #      input.focus();
+                            #    break;
+                           # }
+                        #}
+                  #  }, 100);
+                   # </script>
+                   # """,
+                   # height=0
+              #  )
             
             # Botón de registrar fuera del form
             if "venta_calculada" in st.session_state:
