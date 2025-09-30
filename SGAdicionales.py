@@ -2,7 +2,6 @@ import streamlit as st
 import json
 import os
 import pandas as pd
-import streamlit.components.v1 as components
 
 # Archivos JSON
 PRODUCTOS_FILE = "productos.json"
@@ -92,7 +91,6 @@ if opcion == "Productos":
 # Módulo de Ventas
 # -----------------------
 elif opcion == "Ventas":
-    #st.title("Gestión de Ventas")
     productos = cargar_productos()
     ventas = cargar_ventas()
     
@@ -105,29 +103,30 @@ elif opcion == "Ventas":
             
             # Formulario de captura
             with st.form("form_venta", clear_on_submit=True):
-                bebidas = st.text_input("Bebidas", key="bebidas_input")
+                bebidas = st.text_input("**Bebidas**", key="bebidas_input")
 
+                # 🔹 Ordenar productos por precio (ascendente)
+                productos_ordenados = sorted(productos, key=lambda x: x['precio'])
 
-                
-                total_productos = len(productos)
+                total_productos = len(productos_ordenados)
                 mitad = (total_productos + 1) // 2
                 col1, col2 = st.columns(2)
                 
                 cantidades = {}
-                for p in productos[:mitad]:
+                for p in productos_ordenados[:mitad]:
                     cantidades[p['nombre']] = col1.number_input(
-                        f"{p['nombre']} (${p['precio']})", min_value=0, step=1, key=f"col1_{p['nombre']}"
+                        f"**{p['nombre']} (${p['precio']})**", min_value=0, step=1, key=f"col1_{p['nombre']}"
                     )
-                for p in productos[mitad:]:
+                for p in productos_ordenados[mitad:]:
                     cantidades[p['nombre']] = col2.number_input(
-                        f"{p['nombre']} (${p['precio']})", min_value=0, step=1, key=f"col2_{p['nombre']}"
+                        f"**{p['nombre']} (${p['precio']})**", min_value=0, step=1, key=f"col2_{p['nombre']}"
                     )
                 
                 calcular = st.form_submit_button("Calcular total")
                 
                 if calcular:
                     # Calcular subtotal de productos
-                    subtotal_productos = sum(p['precio'] * cantidades[p['nombre']] for p in productos)
+                    subtotal_productos = sum(p['precio'] * cantidades[p['nombre']] for p in productos_ordenados)
                     try:
                         subtotal_bebidas = float(bebidas) if bebidas.strip() != "" else 0.0
                     except ValueError:
@@ -139,32 +138,15 @@ elif opcion == "Ventas":
                         "venta_num": venta_num,
                         "productos": [
                             {"nombre": p['nombre'], "precio": p['precio'], "cantidad": cantidades[p['nombre']]}
-                            for p in productos if cantidades[p['nombre']] > 0
+                            for p in productos_ordenados if cantidades[p['nombre']] > 0
                         ],
                         "total_productos": subtotal_productos,
                         "bebidas": subtotal_bebidas,
                         "total_venta": total_venta
                     }
                     
-                    st.success(f"Total a cobrar: ${total_venta}")
+                    st.success(f"Total a cobrar: **${total_venta}**")
 
-                # Inyectar JS para enfocar automáticamente el campo
-                #components.html(
-                   # """
-                   # <script>
-                   # setTimeout(function() {
-                      #  const inputs = window.parent.document.querySelectorAll('input');
-                      #  for (let input of inputs) {
-                        #    if (input.placeholder === "Bebidas" || input.ariaLabel === "Bebidas") {
-                          #      input.focus();
-                            #    break;
-                           # }
-                        #}
-                  #  }, 100);
-                   # </script>
-                   # """,
-                   # height=0
-              #  )
             
             # Botón de registrar fuera del form
             if "venta_calculada" in st.session_state:
@@ -191,21 +173,30 @@ elif opcion == "Ventas":
             st.sidebar.warning("⚠️ Esta acción eliminará todas las ventas y reiniciará el contador.")
             if st.sidebar.button("Confirmar restablecimiento"):
                 ventas.clear()
-                guardar_ventas(ventas)  # guarda ventas.json vacío
-                st.sidebar.success("✅ Ventas y contador restablecidos correctamente")
+                guardar_ventas(ventas)
+                st.sidebar.success("Ventas y contador restablecidos correctamente")
                 st.rerun()
 
         if ventas:
-            st.subheader("Ventas Registradas")
+            #st.subheader("Ventas Registradas")
+
+            # 🔹 Filtro por venta
+            opciones_ventas = ["Todas"] + [f"Venta {v['venta_num']}" for v in ventas]
+            venta_seleccionada = st.selectbox("Filtar ventas", opciones_ventas)
+
             total_general = 0.0
+            subtotal_productos = 0.0
+            subtotal_bebidas = 0.0
 
             for v in ventas:
+                if venta_seleccionada != "Todas" and venta_seleccionada != f"Venta {v['venta_num']}":
+                    continue  # saltar ventas que no coinciden con el filtro
+
                 st.write(f"### Venta {v['venta_num']}")
                 col1, col2 = st.columns([3, 1])
 
                 # Columna 1: tabla con productos
                 if v["productos"]:
-                    import pandas as pd
                     df = pd.DataFrame(v["productos"])
                     df["subtotal"] = df["precio"] * df["cantidad"]
 
@@ -214,22 +205,28 @@ elif opcion == "Ventas":
                     df["subtotal"] = df["subtotal"].map(lambda x: f"${x:,.2f}")
                     df["cantidad"] = df["cantidad"].astype(int)
 
-                    df.index = df.index + 1  # índice empieza desde 1
+                    df.index = df.index + 1
                     col1.table(df[["nombre", "cantidad", "precio", "subtotal"]])
                 else:
                     col1.write("No hay productos en esta venta")
 
                 # Columna 2: totales
-                #col2.write("**Totales**")
                 col2.write(f"- Productos: ${v['total_productos']:.2f}")
                 col2.write(f"- Bebidas: ${v['bebidas']:.2f}")
                 col2.success(f"**Total: ${v['total_venta']:.2f}**")
 
+                # Acumular totales
+                subtotal_productos += v['total_productos']
+                subtotal_bebidas += v['bebidas']
                 total_general += v['total_venta']
+
                 st.write("___")
 
-            # Total acumulado de todas las ventas
+            # Totales acumulados en sidebar
+            st.sidebar.info(f"**Subtotal de productos: ${subtotal_productos:.2f}**")
+            st.sidebar.warning(f"**Subtotal de bebidas: ${subtotal_bebidas:.2f}**")
             st.sidebar.success(f"**Total general de todas las ventas: ${total_general:.2f}**")
+
         else:
             st.info("No hay ventas registradas")
 
