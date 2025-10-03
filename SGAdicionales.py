@@ -29,7 +29,7 @@ def enviar_correo_venta(venta):
     destino = st.secrets["EMAIL"]["DESTINO"]
 
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"Nueva venta registrada - Venta #{venta['venta_num']}"
+    msg["Subject"] = f"Nueva venta por ${venta['total_venta']:.2f} - Venta #{venta['venta_num']}"
     msg["From"] = remitente
     msg["To"] = destino
 
