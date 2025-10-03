@@ -2,6 +2,9 @@ import streamlit as st
 import json
 import os
 import pandas as pd
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # Archivos JSON
 PRODUCTOS_FILE = "productos.json"
@@ -16,7 +19,58 @@ if not os.path.exists(VENTAS_FILE):
     with open(VENTAS_FILE, "w") as f:
         json.dump([], f)
 
+# -----------------------
+# Función de envío de correo usando st.secrets
+# -----------------------
+def enviar_correo_venta(venta):
+    """Envía un correo al dueño con el detalle de la venta en HTML"""
+    remitente = st.secrets["EMAIL"]["USER"]
+    password = st.secrets["EMAIL"]["PASSWORD"]
+    destino = st.secrets["EMAIL"]["DESTINO"]
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = f"Nueva venta registrada - Venta #{venta['venta_num']}"
+    msg["From"] = remitente
+    msg["To"] = destino
+
+    # Tabla HTML de productos
+    if venta["productos"]:
+        df = pd.DataFrame(venta["productos"])
+        df["subtotal"] = df["precio"] * df["cantidad"]
+        tabla_html = df.to_html(index=False, justify="center")
+    else:
+        tabla_html = "<p>No hay productos en esta venta</p>"
+
+    # Totales
+    totales_html = f"""
+    <p><b>Total productos:</b> ${venta['total_productos']:.2f}</p>
+    <p><b>Total bebidas:</b> ${venta['bebidas']:.2f}</p>
+    <p><b>Total general:</b> ${venta['total_venta']:.2f}</p>
+    """
+
+    cuerpo = f"""
+    <h2>Detalle de la Venta #{venta['venta_num']}</h2>
+    {tabla_html}
+    <br>
+    {totales_html}
+    <p><i>Registro generado automáticamente por el sistema de ventas. CDelgado</i></p>
+    """
+
+    msg.attach(MIMEText(cuerpo, "html"))
+
+    try:
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(remitente, password)
+        server.sendmail(remitente, destino, msg.as_string())
+        server.quit()
+        st.success(f"Correo enviado al dueño con el detalle de la venta #{venta['venta_num']}")
+    except Exception as e:
+        st.error(f"Error al enviar correo: {e}")
+
+# -----------------------
 # Funciones de persistencia
+# -----------------------
 def cargar_productos():
     with open(PRODUCTOS_FILE, "r") as f:
         return json.load(f)
@@ -33,7 +87,9 @@ def guardar_ventas(ventas):
     with open(VENTAS_FILE, "w") as f:
         json.dump(ventas, f, indent=4)
 
+# -----------------------
 # Sidebar con selectbox
+# -----------------------
 st.sidebar.title("Menú")
 opcion = st.sidebar.selectbox("Selecciona una opción:", ["Ventas", "Productos"], label_visibility="collapsed")
 
@@ -41,7 +97,6 @@ opcion = st.sidebar.selectbox("Selecciona una opción:", ["Ventas", "Productos"]
 # Módulo de Productos
 # -----------------------
 if opcion == "Productos":
-    #st.title("Gestión de Productos")
     productos = cargar_productos()
     
     menu = st.sidebar.radio("Acción:", ["Registrar Producto", "Editar Producto", "Consultar Productos"], label_visibility="collapsed")
@@ -79,10 +134,8 @@ if opcion == "Productos":
     elif menu == "Consultar Productos":
         st.sidebar.write("---")
         if productos:
-            #st.subheader("Lista de Productos")
-            # Convertir a DataFrame
             df = pd.DataFrame(productos)
-            df.index = df.index + 1  # índice comenzando desde 1
+            df.index = df.index + 1
             st.sidebar.dataframe(df)
         else:
             st.info("No hay productos registrados")
@@ -101,13 +154,10 @@ elif opcion == "Ventas":
             venta_num = len(ventas) + 1
             st.subheader(f"Registrar Venta #{venta_num}")
             
-            # Formulario de captura
             with st.form("form_venta", clear_on_submit=True):
                 bebidas = st.text_input("**Bebidas**", key="bebidas_input")
 
-                # 🔹 Ordenar productos por precio (ascendente)
                 productos_ordenados = sorted(productos, key=lambda x: x['precio'])
-
                 total_productos = len(productos_ordenados)
                 mitad = (total_productos + 1) // 2
                 col1, col2 = st.columns(2)
@@ -125,7 +175,6 @@ elif opcion == "Ventas":
                 calcular = st.form_submit_button("Calcular total")
                 
                 if calcular:
-                    # Calcular subtotal de productos
                     subtotal_productos = sum(p['precio'] * cantidades[p['nombre']] for p in productos_ordenados)
                     try:
                         subtotal_bebidas = float(bebidas) if bebidas.strip() != "" else 0.0
@@ -133,7 +182,6 @@ elif opcion == "Ventas":
                         subtotal_bebidas = 0.0
                     total_venta = subtotal_productos + subtotal_bebidas
                     
-                    # Guardar en session_state para usar afuera del form
                     st.session_state["venta_calculada"] = {
                         "venta_num": venta_num,
                         "productos": [
@@ -147,17 +195,19 @@ elif opcion == "Ventas":
                     
                     st.success(f"Total a cobrar: **${total_venta}**")
 
-            
-            # Botón de registrar fuera del form
             if "venta_calculada" in st.session_state:
                 if st.button("Registrar Venta"):
                     venta_data = st.session_state["venta_calculada"]
-                    
+
                     if venta_data["productos"] or venta_data["bebidas"] > 0:
                         ventas.append(venta_data)
                         guardar_ventas(ventas)
+
+                        # 🔹 Enviar correo al dueño
+                        enviar_correo_venta(venta_data)
+
                         st.success(f"Venta {venta_data['venta_num']} registrada con éxito. Total: ${venta_data['total_venta']}")
-                        del st.session_state["venta_calculada"]  # limpiar
+                        del st.session_state["venta_calculada"]
                         st.rerun()
                     else:
                         st.warning("Debe ingresar al menos un producto o monto en bebidas")
@@ -165,10 +215,7 @@ elif opcion == "Ventas":
         else:
             st.info("No hay productos disponibles para vender")
 
-
-        
     elif menu == "Consultar Ventas":
-        # Checkbox en el sidebar para activar la opción de restablecer
         if st.sidebar.checkbox("Restablecer ventas"):
             st.sidebar.warning("⚠️ Esta acción eliminará todas las ventas y reiniciará el contador.")
             if st.sidebar.button("Confirmar restablecimiento"):
@@ -178,9 +225,6 @@ elif opcion == "Ventas":
                 st.rerun()
 
         if ventas:
-            #st.subheader("Ventas Registradas")
-
-            # 🔹 Filtro por venta
             opciones_ventas = ["Todas"] + [f"Venta {v['venta_num']}" for v in ventas]
             venta_seleccionada = st.selectbox("Filtar ventas", opciones_ventas)
 
@@ -190,17 +234,15 @@ elif opcion == "Ventas":
 
             for v in ventas:
                 if venta_seleccionada != "Todas" and venta_seleccionada != f"Venta {v['venta_num']}":
-                    continue  # saltar ventas que no coinciden con el filtro
+                    continue  
 
                 st.write(f"### Venta {v['venta_num']}")
                 col1, col2 = st.columns([3, 1])
 
-                # Columna 1: tabla con productos
                 if v["productos"]:
                     df = pd.DataFrame(v["productos"])
                     df["subtotal"] = df["precio"] * df["cantidad"]
 
-                    # Formatear columnas
                     df["precio"] = df["precio"].map(lambda x: f"${x:,.2f}")
                     df["subtotal"] = df["subtotal"].map(lambda x: f"${x:,.2f}")
                     df["cantidad"] = df["cantidad"].astype(int)
@@ -210,24 +252,19 @@ elif opcion == "Ventas":
                 else:
                     col1.write("No hay productos en esta venta")
 
-                # Columna 2: totales
                 col2.write(f"- Productos: ${v['total_productos']:.2f}")
                 col2.write(f"- Bebidas: ${v['bebidas']:.2f}")
                 col2.success(f"**Total: ${v['total_venta']:.2f}**")
 
-                # Acumular totales
                 subtotal_productos += v['total_productos']
                 subtotal_bebidas += v['bebidas']
                 total_general += v['total_venta']
 
                 st.write("___")
 
-            # Totales acumulados en sidebar
             st.sidebar.info(f"**Subtotal de productos: ${subtotal_productos:.2f}**")
             st.sidebar.warning(f"**Subtotal de bebidas: ${subtotal_bebidas:.2f}**")
             st.sidebar.success(f"**Total general de todas las ventas: ${total_general:.2f}**")
 
         else:
             st.info("No hay ventas registradas")
-
-
